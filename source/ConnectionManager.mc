@@ -16,15 +16,15 @@
 // 4. As bytes come in, keep appending them to a buffer until the number of
 //    collected bytes >= 20.
 // 5. Once collected bytes >= 20, calculate the challenge response.
-//    5.1. Write 3 bytes to start to the response: "435258"
+//    5.1. Write 3 bytes to the start of the challenge response: "435258"
 //    5.2. Prep a secondary buffer, and copy bytes [3, 19) from the collected
-//         bytes.
+//         buffer of bytes from step 4.
 //    5.3. Append "D9255F0F23354E19BA739CCDC4A91765" to the secondary buffer.
 //    5.4. Calculate the MD5 digest for the secondary buffer, and append that
 //         to the challenge response..
 //    5.5. Calculate the checksum across the entire challenge response, and
-//         append that to the response.
-// 6. Write the challenge response to the UART_SERIAL_WRITE_CHARACTERISTIC.
+//         append that to the end of the challenge response.
+// 6. Write the challenge response to UART_SERIAL_WRITE_CHARACTERISTIC.
 // 7. If the write was unsuccessful, abort and try again the next time the OW
 //    writes to UART_SERIAL_READ_CHARACTERISTIC.
 //    If the write was successful, turn off notifications for the
