@@ -31,7 +31,7 @@
 //    UART_SERIAL_READ_CHARACTERISTIC, since we're done with it.
 // 8. Once notification disable request is accepted, start the periodic keep
 //    alive, which consists of writing the fimrware revision characteristic
-//    back onto itself.
+//    back onto itself. Also, notify any listeners that connection is completed.
 
 using Toybox.BluetoothLowEnergy as Ble;
 using Toybox.Cryptography as Cryptography;
@@ -135,14 +135,15 @@ class ConnectionManager {
 
     private function pair() {
         Utils.log("Sending pair request.");
-        // TODO: Handle what happens in case pairing times out.
         try {
             _device = Ble.pairDevice(_scanResult);
         } catch (ex) {
-            Utils.log("Error while retrying pairing: " + ex.getErrorMessage());
-            ex.printStackTrace();
+            Utils.log("Error retrying pairing: " + ex.getErrorMessage());
         }
-        _pairTimer.start(method(:retryPair), 1000, false);
+        // Sometimes pairing hangs and nothing happens. Pairing takes
+        // ridiculously long, 30s - 45s so try pairing again in case it hasn't
+        // completed by 50 seconds.
+        _pairTimer.start(method(:retryPair), 50000, false);
     }
 
     function retryPair() {
@@ -179,7 +180,6 @@ class ConnectionManager {
             // The device disconnected, restart the connection.
             Utils.log(
                     "ConnectionManager: Onewheel disconnected, reconnecting.");
-            // TODO: Should we reset OWDataModel as well?
             resetConnection();
             return;
         }
