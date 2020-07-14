@@ -59,14 +59,25 @@ class DeviceView extends WatchUi.View {
             dc.drawText(xOffset, yOffset, Graphics.FONT_TINY,
                         "Trip (Miles)", Graphics.TEXT_JUSTIFY_RIGHT);
 
-            yOffset = center_y + dc.getFontHeight(Graphics.FONT_NUMBER_HOT) / 2;
             xOffset = center_x + 35;
             dc.setColor(Graphics.COLOR_BLACK, Graphics.COLOR_WHITE);
             dc.drawText(xOffset, yOffset, Graphics.FONT_TINY,
                         odometerString, Graphics.TEXT_JUSTIFY_LEFT);
-        }
-    }
 
-    private function drawBatteryPercent(dc, batteryRemaining) {
+            // Draw trip elapsed time
+            var elapsedTime = _dataModel.getElapsedTime();
+            yOffset = center_y - 20 -
+                   dc.getFontHeight(Graphics.FONT_NUMBER_HOT) / 2;
+            xOffset = center_x + 10;
+            dc.setColor(Graphics.COLOR_DK_GRAY, Graphics.COLOR_WHITE);
+            dc.drawText(xOffset, yOffset, Graphics.FONT_TINY,
+                        "Duration", Graphics.TEXT_JUSTIFY_RIGHT);
+
+            xOffset = center_x + 15;
+            dc.setColor(Graphics.COLOR_BLACK, Graphics.COLOR_WHITE);
+            dc.drawText(xOffset, yOffset, Graphics.FONT_TINY,
+                        elapsedTime, Graphics.TEXT_JUSTIFY_LEFT);
+
+        }
     }
 }

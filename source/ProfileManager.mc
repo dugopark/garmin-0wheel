@@ -80,15 +80,8 @@ class ProfileManager {
         }]
     };
 
-    function initialize() {
-        Utils.log("In initialize");
-    }
-
     function registerProfiles() {
-        for (var i = 0; i < 3; ++i) {
-            var ret = Ble.registerProfile(_onewheelProfileDef);
-            Utils.log("register profile returns: " + ret);
-        }
+        var ret = Ble.registerProfile(_onewheelProfileDef);
     }
 
     function getMonitoredCharacteristicUuids() {
