@@ -125,6 +125,7 @@ class ConnectionManager {
     }
 
     function resetConnection() {
+        _keepAliveTimer.stop();
         unpair();
         _scanResult = null;
         _device = null;
@@ -165,6 +166,7 @@ class ConnectionManager {
                 Utils.log("Device that is connecting doesn't match our device.");
                 return;
             }
+            _pairTimer.stop();
             _service = device.getService(_profileManager.ONEWHEEL_SERVICE);
             if (_service == null) {
                 // TODO: Sometimes we end up here.
