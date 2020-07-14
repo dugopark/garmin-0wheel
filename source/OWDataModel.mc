@@ -1,5 +1,9 @@
 using Toybox.BluetoothLowEnergy as Ble;
+using Toybox.Math as Math;
 using Toybox.System as Sys;
+using Toybox.Time as Time;
+using Toybox.Time.Gregorian as Gregorian;
+using Toybox.Timer as Timer;
 using Toybox.WatchUi as WatchUi;
 
 // Next: Figure out why onDescriptorWrite is getting called after all is said
@@ -12,12 +16,14 @@ class OWDataModel {
     private var _isConnected;
     private var _initialized;
 
-    private var _tiltAnglePitch;
+    private var _elapsedTimeTimer;
+
     private var _batteryRemaining;
     private var _safetyHeadroom;
     private var _speedMph;
     private var _odometer;
-    private var _lifetimeOdometer;
+    private var _startTime;
+    private var _elapsedTime;
 
     private var _pendingReads;
     private var _pendingNotifies;
@@ -32,6 +38,9 @@ class OWDataModel {
         _initialized = false;
 
         _speedMph = 0.0;
+        _startTime = Time.now();
+        _elapsedTime = "00:00";
+        _elapsedTimeTimer = new Timer.Timer();
 
         connectionManager.notifyConnected(method(:notifyConnected));
 
@@ -213,11 +222,8 @@ class OWDataModel {
             _pendingReads = [];
             _initialized = true;
             Utils.log("All done with initial reads.");
+            _elapsedTimeTimer.start(method(:processElapsedTime), 60000, true);
         }
-    }
-
-    function getTiltAnglePitch() {
-        return _tiltAnglePitch;
     }
 
     function getBatteryRemaining() {
@@ -236,11 +242,17 @@ class OWDataModel {
         return _odometer;
     }
 
-    private function processTiltAnglePitch(value) {
-        _tiltAnglePitch = value.decodeNumber(
-                Lang.NUMBER_FORMAT_UINT16,
-                { :endianness => Lang.ENDIAN_BIG });
-        Utils.log("Pitch changed. Raw = " + value + " decoded: " + _tiltAnglePitch);
+    function getElapsedTime() {
+        return _elapsedTime;
+    }
+
+    function processElapsedTime() {
+        var now = Time.now();
+        var elapsed = now.subtract(_startTime);
+        var hours = Math.floor(elapsed.value() / 3600);
+        var minutes = Math.floor((elapsed.value() % 3600) / 60);
+        _elapsedTime = Lang.format("$1$:$2$",
+                [ hours.format("%02d"), minutes.format("%02d") ]);
         WatchUi.requestUpdate();
     }
 
@@ -275,10 +287,4 @@ class OWDataModel {
         WatchUi.requestUpdate();
     }
 
-    private function processLifetimeOdometer(value) {
-        _lifetimeOdometer =
-            value.decodeNumber(Lang.NUMBER_FORMAT_UINT16,
-                               {:endianness => Lang.ENDIAN_BIG});
-        WatchUi.requestUpdate();
-    }
 }
