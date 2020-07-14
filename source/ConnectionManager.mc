@@ -31,7 +31,7 @@
 //    UART_SERIAL_READ_CHARACTERISTIC, since we're done with it.
 // 8. Once notification disable request is accepted, start the periodic keep
 //    alive, which consists of writing the fimrware revision characteristic
-//    back onto itself.
+//    back onto itself. Also, notify any listeners that connection is completed.
 
 using Toybox.BluetoothLowEnergy as Ble;
 using Toybox.Cryptography as Cryptography;
@@ -42,6 +42,8 @@ class ConnectionManager {
     // Connection status.
     enum {
         STATE_DISCONNECTED,
+        STATE_SCANNING,
+        STATE_PAIRING,
         STATE_SETUP_HANDSHAKE,
         STATE_SEND_HANDSHAKE_RESPONSE,
         STATE_SETUP_KEEP_ALIVE,
@@ -51,8 +53,12 @@ class ConnectionManager {
     private var OW_DEVICE_PREFIX = "ow";
 
     private var _profileManager;
+    private var _scanResult;
     private var _device;
     private var _handshakeChallenge;
+    private var _handshakeChallengeIndex;
+    private var _pairTimer;
+    private var _uartReadTimer;
     private var _keepAliveTimer;
     private var _service;
     private var _state;
@@ -65,8 +71,11 @@ class ConnectionManager {
     function initialize(bleDelegate, profileManager) {
         _profileManager = profileManager;
         _device = null;
-        _handshakeChallenge = []b;
+        _handshakeChallengeIndex = 0;
+        _handshakeChallenge = new [20]b;
+        _uartReadTimer = new Timer.Timer();
         _keepAliveTimer = new Timer.Timer();
+        _pairTimer = new Timer.Timer();
         _service = null;
         _state = ConnectionManager.STATE_DISCONNECTED;
 
@@ -94,6 +103,7 @@ class ConnectionManager {
     }
 
     function startScanning() {
+        _state = STATE_SCANNING;
         Ble.setScanState(Ble.SCAN_STATE_SCANNING);
     }
 
@@ -101,29 +111,46 @@ class ConnectionManager {
         for (var result = scanResults.next(); result != null;
                 result = scanResults.next()) {
             var deviceName = result.getDeviceName();
-            Utils.log("deviceName: " + deviceName);
             if (deviceName != null &&
                 (deviceName.find(OW_DEVICE_PREFIX) == 0 ||
                  deviceName.find("Onewheel") == 0)) {
                 Utils.log("Found Onewheel device: " + deviceName);
+                _state = STATE_PAIRING;
+                _scanResult = result;
                 Ble.setScanState(Ble.SCAN_STATE_OFF);
-                pair(result);
+                pair();
                 break;
             }
         }
     }
 
-    private function resetConnection() {
+    function resetConnection() {
         unpair();
+        _scanResult = null;
         _device = null;
-        _handshakeChallenge = []b;
+        _handshakeChallengeIndex = 0;
         _state = STATE_DISCONNECTED;
         startScanning();
     }
 
-    private function pair(scanResult) {
+    private function pair() {
         Utils.log("Sending pair request.");
-        _device = Ble.pairDevice(scanResult);
+        try {
+            _device = Ble.pairDevice(_scanResult);
+        } catch (ex) {
+            Utils.log("Error retrying pairing: " + ex.getErrorMessage());
+        }
+        // Sometimes pairing hangs and nothing happens. Pairing takes
+        // ridiculously long, 30s - 45s so try pairing again in case it hasn't
+        // completed by 50 seconds.
+        _pairTimer.start(method(:retryPair), 50000, false);
+    }
+
+    function retryPair() {
+        if (_state == STATE_PAIRING) {
+            Utils.log("Pairing request timed out, pairing again.");
+            pair();
+        }
     }
 
     function unpair() {
@@ -147,13 +174,12 @@ class ConnectionManager {
                 return;
             }
             Utils.log("OW device initial pairing successful.");
-
+            _state = STATE_SETUP_HANDSHAKE;
             startHandshake();
         } else {
             // The device disconnected, restart the connection.
             Utils.log(
                     "ConnectionManager: Onewheel disconnected, reconnecting.");
-            // TODO: Should we reset OWDataModel as well?
             resetConnection();
             return;
         }
@@ -219,15 +245,7 @@ class ConnectionManager {
     }
 
     function onDescriptorWrite(descriptor, status) {
-        Utils.log("ConnectionManager: onDescriptorWrite called for uuid: " +
-                  descriptor.getCharacteristic().getUuid());
         switch (_state) {
-            case STATE_DISCONNECTED:
-                Utils.log("ConnectionManager: Not processing onDescriptorWrite, since disconnected.");
-                return;
-            case STATE_CONNECTED:
-                Utils.log("ConnectionManager: Not processing onDescriptorWrite, since already connected.");
-                return;
             case STATE_SETUP_HANDSHAKE:
                 Utils.log("ConnectionManager: onDescriptorWrite, STATE_SETUP_HANDSHAKE");
                 if (status != Ble.STATUS_SUCCESS ||
@@ -285,11 +303,18 @@ class ConnectionManager {
         }
     }
 
+    function restartSerialRead() {
+        Utils.log("ConnectionManager: " +
+                  "Timed out while waiting for UART_SERIAL_READ. Sending " +
+                  "handshake init again.");
+        _handshakeChallengeIndex = 0;
+        sendHandshakeInit();
+    }
+
     function onCharacteristicChanged(characteristic, value) {
         if (_state != ConnectionManager.STATE_SETUP_HANDSHAKE) {
             return;
         }
-        Utils.log("ConnectionManager: onCharacteristicChanged for uuid: " + characteristic.getUuid());
         if (!characteristic.getUuid().equals(
                 _profileManager.UART_SERIAL_READ_CHARACTERISTIC)) {
             Utils.log("Unexpected chacteristic read during handshake.");
@@ -297,19 +322,32 @@ class ConnectionManager {
             return;
         }
         // Step 4
-        _handshakeChallenge.addAll(value);
+        _uartReadTimer.stop();
+        appendToHandshakeChallenge(value);
+
+        if (_handshakeChallengeIndex < 20 ||
+            _state != STATE_SETUP_HANDSHAKE) {
+            Utils.log("Step 4.1: _handshakeChallengeIndex = " + _handshakeChallengeIndex +
+                      " _state = " + _state);
+
+            // Wait 5 seconds for the next SERIAL_READ. If not, reset and start
+            // all over. Sometimes the BLE interface hangs while reading from
+            // UART_SERIAL_READ_CHARACTERISTIC.
+            _uartReadTimer.start(method(:restartSerialRead), 5000, false);
+            return;
+        }
         processHandshake();
     }
 
-    function processHandshake() {
-        if (_handshakeChallenge.size() < 20 ||
-            _state != STATE_SETUP_HANDSHAKE) {
-            Utils.log("Step 4.1: _handshakeChallenge.size() = " + _handshakeChallenge.size() +
-                      " _state = " + _state + " challenge: " + _handshakeChallenge);
-            return;
+    private function appendToHandshakeChallenge(value) {
+        for (var i = 0; i < value.size(); ++i) {
+            _handshakeChallenge[_handshakeChallengeIndex] = value[i];
+            ++_handshakeChallengeIndex;
         }
+    }
 
-        Utils.log("Step 4.1: _handshakeChallenge.size() = " + _handshakeChallenge.size() +
+    function processHandshake() {
+        Utils.log("Step 4.1: _handshakeChallengeIndex = " + _handshakeChallengeIndex +
                   " _state = " + _state + " challenge: " + _handshakeChallenge);
 
         _state = STATE_SEND_HANDSHAKE_RESPONSE;
@@ -317,20 +355,19 @@ class ConnectionManager {
         Utils.log("Step 5: Calculating handshake response.");
 
         // Step 5.1
+        // Write the bytes "435258"
         var out = [67, 82, 88]b;
-//        out.addAll(Utils.stringToByteArray("435258"));
         Utils.log("out: " + out);
 
         // Step 5.2
         var md5Input = _handshakeChallenge.slice(3, 19);
         // Step 5.3
-        md5Input.addAll([217, 37, 95, 15, 35, 53, 78, 25, 186, 115, 156, 205, 196, 169, 23, 101]b);
-//        md5Input.addAll(
-//            Utils.stringToByteArray("D9255F0F23354E19BA739CCDC4A91765"));
-        Utils.log("additional: " + Utils.stringToByteArray("D9255F0F23354E19BA739CCDC4A91765"));
+        // Write the bytes "D9255F0F23354E19BA739CCDC4A91765"
+        md5Input.addAll([217, 37, 95, 15, 35, 53, 78, 25, 186, 115, 156, 205,
+                         196, 169, 23, 101]b);
 
         // Step 5.4
-        var hash = new Cryptography.Hash({ :algorithm => Cryptography.HASH_MD5 });
+        var hash = new Cryptography.Hash({:algorithm => Cryptography.HASH_MD5});
         hash.update(md5Input);
         out.addAll(hash.digest());
 
@@ -342,8 +379,7 @@ class ConnectionManager {
         out.add(checkByte);
 
         // Step 6
-        Utils.log("Step 6: Writing handshake response to UART_SERIAL_WRITE " +
-                    "out = " + out);
+        Utils.log("Step 6: Writing handshake response to UART_SERIAL_WRITE.");
         var characteristic = _service.getCharacteristic(
                 _profileManager.UART_SERIAL_WRITE_CHARACTERISTIC);
         if (characteristic == null) {
@@ -372,7 +408,7 @@ class ConnectionManager {
                         "failed with status: " + status);
             return;
         }
-        Utils.log("Step 6: Handshake response written to UART_SERIAL_WRITE.");
+        Utils.log("Step 6: Handshake response written.");
 
         // Step 7
         _state = ConnectionManager.STATE_SETUP_KEEP_ALIVE;
