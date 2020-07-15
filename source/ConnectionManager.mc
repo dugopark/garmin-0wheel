@@ -72,7 +72,7 @@ class ConnectionManager {
         _profileManager = profileManager;
         _device = null;
         _handshakeChallengeIndex = 0;
-        _handshakeChallenge = new [20]b;
+        _handshakeChallenge = new [30]b;
         _uartReadTimer = new Timer.Timer();
         _keepAliveTimer = new Timer.Timer();
         _pairTimer = new Timer.Timer();

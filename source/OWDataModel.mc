@@ -16,17 +16,19 @@ class OWDataModel {
     private var _isConnected;
     private var _initialized;
 
-    private var _elapsedTimeTimer;
+    private var _pendingReads;
+    private var _pendingNotifies;
 
     private var _batteryRemaining;
     private var _safetyHeadroom;
     private var _speedMph;
+    private var _odometerTripRpm;
+    private var _odometerLastReadRpm;
+    private var _addOdometerTripRpm;
     private var _odometer;
     private var _startTime;
     private var _elapsedTime;
-
-    private var _pendingReads;
-    private var _pendingNotifies;
+    private var _elapsedTimeTimer;
 
     function initialize(bleDelegate,
                         profileManager,
@@ -38,6 +40,9 @@ class OWDataModel {
         _initialized = false;
 
         _speedMph = 0.0;
+        _odometerTripRpm = 0;
+        _odometerLastReadRpm = 0;
+        _addOdometerTripRpm = false;
         _startTime = Time.now();
         _elapsedTime = "00:00";
         _elapsedTimeTimer = new Timer.Timer();
@@ -63,6 +68,10 @@ class OWDataModel {
             Utils.log("OWDataModel: Onewheel disconnected, resetting state.");
             _isConnected = false;
             _service = null;
+
+            // Save the odometer rotations for the trip, so that trip odometer
+            // persists across restarts.
+            _odometerTripRpm += _odometerLastReadRpm;
         }
     }
 
@@ -189,7 +198,7 @@ class OWDataModel {
                 processSpeedRpm(value);
                 break;
             case _profileManager.ODOMETER_CHARACTERISTIC:
-                processOdometer(value);
+                processOdometer(value, false);
                 break;
         }
     }
@@ -211,7 +220,7 @@ class OWDataModel {
                     processBatteryRemaining(value);
                     break;
                 case _profileManager.ODOMETER_CHARACTERISTIC:
-                    processOdometer(value);
+                    processOdometer(value, true);
                     break;
             }
         }
@@ -277,14 +286,41 @@ class OWDataModel {
         WatchUi.requestUpdate();
     }
 
-    private function processOdometer( value ) {
+    // Process the trip odometer value coming in from the Onewheel.
+    // Keep the trip odometer counting the mileage across Onewheel restarts.
+    //
+    // Three cases to consider:
+    // 1) Onewheel was never disconnected.
+    //    In this case, use the odometer value coming back from the Onewheel.
+    // 2) Onewheel was shut off, and the turned back on to reconnect.
+    //    In this case, save the trip odometer during disconnect and add it
+    //    to the value coming back from the Onewheel.
+    // 3) Onewheel connection died, and then reconnected.
+    //    In this case, we should use only the odometer value coming back from
+    //    the Onewheel.
+    private function processOdometer(value, isInitialRead) {
         var odometerRotations =
             value.decodeNumber(Lang.NUMBER_FORMAT_UINT16,
                                {:endianness => Lang.ENDIAN_BIG});
         Utils.log("Odometer: Raw = " + value + " decoded: " +
                   odometerRotations);
-        _odometer = odometerRotations * 11 * Math.PI / 63360;
+        _odometerLastReadRpm = odometerRotations;
+
+        if (isInitialRead) {
+            if (odometerRotations < _odometerTripRpm) {
+                _addOdometerTripRpm = true;
+            } else {
+                _addOdometerTripRpm = false;
+            }
+        }
+
+        var tripRpm;
+        if (_addOdometerTripRpm) {
+            tripRpm = _odometerTripRpm + odometerRotations;
+        } else {
+            tripRpm = odometerRotations;
+        }
+        _odometer = tripRpm * 11 * Math.PI / 63360;
         WatchUi.requestUpdate();
     }
-
 }
