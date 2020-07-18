@@ -23,9 +23,17 @@ class OnewheelApp extends Application.AppBase {
                                                    _profileManager);
         _modelFactory = new DataModelFactory(
                 _bleDelegate, _profileManager, _connectionManager);
-        _viewController = new ViewController(_modelFactory);
-        _profileManager.registerProfiles();
-        Ble.setDelegate(_bleDelegate);
+        _modelFactory.getOWDataModel();
+        _viewController = new ViewController( _modelFactory );
+        Ble.setDelegate( _bleDelegate );
+        for (var i = 0; i < 3; ++i) {
+            try {
+                var o = _profileManager.registerProfiles();
+            } catch (ex) {
+                Utils.log("Failed to register BLE profiles: " +
+                          ex.getErrorMessage());
+            }
+        }
     }
 
     // onStop() is called when your application is exiting
@@ -44,7 +52,7 @@ class OnewheelApp extends Application.AppBase {
     //   An Array containing just a WatchUi.View and an optional
     //   WatchUi.InputDelegate
     function getInitialView() {
-        return _viewController.getInitialView();
+        return _viewController.getInitialView(_connectionManager);
     }
 
 }

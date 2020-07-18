@@ -302,8 +302,6 @@ class OWDataModel {
         var odometerRotations =
             value.decodeNumber(Lang.NUMBER_FORMAT_UINT16,
                                {:endianness => Lang.ENDIAN_BIG});
-        Utils.log("Odometer: Raw = " + value + " decoded: " +
-                  odometerRotations);
         _odometerLastReadRpm = odometerRotations;
 
         if (isInitialRead) {
