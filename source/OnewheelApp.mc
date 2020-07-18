@@ -28,6 +28,7 @@ class OnewheelApp extends Application.AppBase {
                                                    _profileManager);
         _modelFactory = new DataModelFactory(
                 _bleDelegate, _profileManager, _connectionManager);
+        _modelFactory.getOWDataModel();
         _viewController = new ViewController( _modelFactory );
         Ble.setDelegate( _bleDelegate );
         for (var i = 0; i < 3; ++i) {
@@ -56,7 +57,7 @@ class OnewheelApp extends Application.AppBase {
     //   An Array containing just a WatchUi.View and an optional
     //   WatchUi.InputDelegate
     function getInitialView() {
-        return _viewController.getInitialView();
+        return _viewController.getInitialView(_connectionManager);
     }
 
 }

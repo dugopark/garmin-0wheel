@@ -98,12 +98,17 @@ class ConnectionManager {
         startScanning();
     }
 
+    function getState() {
+        return _state;
+    }
+
     function notifyConnected(callback) {
         _onConnected = callback;
     }
 
     function startScanning() {
         _state = STATE_SCANNING;
+        WatchUi.requestUpdate();
         Ble.setScanState(Ble.SCAN_STATE_SCANNING);
     }
 
@@ -116,6 +121,7 @@ class ConnectionManager {
                  deviceName.find("Onewheel") == 0)) {
                 Utils.log("Found Onewheel device: " + deviceName);
                 _state = STATE_PAIRING;
+                WatchUi.requestUpdate();
                 _scanResult = result;
                 Ble.setScanState(Ble.SCAN_STATE_OFF);
                 pair();
@@ -131,6 +137,7 @@ class ConnectionManager {
         _device = null;
         _handshakeChallengeIndex = 0;
         _state = STATE_DISCONNECTED;
+        WatchUi.requestUpdate();
         startScanning();
     }
 
@@ -176,7 +183,6 @@ class ConnectionManager {
                 return;
             }
             Utils.log("OW device initial pairing successful.");
-            _state = STATE_SETUP_HANDSHAKE;
             startHandshake();
         } else {
             // The device disconnected, restart the connection.
@@ -189,6 +195,7 @@ class ConnectionManager {
 
     private function startHandshake() {
         _state = ConnectionManager.STATE_SETUP_HANDSHAKE;
+        WatchUi.requestUpdate();
         // Step 1
         Utils.log("Starting handshake protocol.");
         var characteristic = _service.getCharacteristic(
@@ -196,6 +203,7 @@ class ConnectionManager {
         if (characteristic == null) {
             Utils.log("Couldn't find firmware revision characteristic.");
             _state = STATE_DISCONNECTED;
+            WatchUi.requestUpdate();
             return;
         }
 
@@ -215,6 +223,7 @@ class ConnectionManager {
             Utils.log("Failed to read characteristic with uuid: " +
                     characteristic.getUuid());
             _state = ConnectionManager.STATE_DISCONNECTED;
+            WatchUi.requestUpdate();
             return;
         }
 
@@ -229,6 +238,7 @@ class ConnectionManager {
         } else {
             Utils.log("Older than gemini. No handshake needed.");
             _state = STATE_CONNECTED;
+            WatchUi.requestUpdate();
             _onConnected.invoke(_device);
         }
     }
@@ -256,6 +266,7 @@ class ConnectionManager {
                     Utils.log("Unexpected descriptor write during "  +
                                 "handshake.");
                     _state = ConnectionManager.STATE_DISCONNECTED;
+                    WatchUi.requestUpdate();
                 }
                 Utils.log("Step 3: Notifications enabled for " +
                             "UART_SERIAL_READ_CHARACTERISTIC. Sending " +
@@ -272,6 +283,7 @@ class ConnectionManager {
                 }
                 Utils.log("Starting keep alive timer.");
                 _state = STATE_CONNECTED;
+                WatchUi.requestUpdate();
                 _keepAliveTimer.start(method(:sendHandshakeInit), 15000, true);
                 _onConnected.invoke(_device);
                 return;
@@ -284,6 +296,7 @@ class ConnectionManager {
         if (characteristic == null) {
             Utils.log("Failed to find firmware revision characteristic.");
             _state = ConnectionManager.STATE_DISCONNECTED;
+            WatchUi.requestUpdate();
             return;
         }
         // Write and don't bother to get a response, since this is used only as
@@ -321,6 +334,7 @@ class ConnectionManager {
                 _profileManager.UART_SERIAL_READ_CHARACTERISTIC)) {
             Utils.log("Unexpected chacteristic read during handshake.");
             _state = ConnectionManager.STATE_DISCONNECTED;
+            WatchUi.requestUpdate();
             return;
         }
         // Step 4
@@ -353,6 +367,7 @@ class ConnectionManager {
                   " _state = " + _state + " challenge: " + _handshakeChallenge);
 
         _state = STATE_SEND_HANDSHAKE_RESPONSE;
+        WatchUi.requestUpdate();
         // Step 5
         Utils.log("Step 5: Calculating handshake response.");
 
@@ -388,6 +403,7 @@ class ConnectionManager {
             Utils.log("Couldn't find characteristic " +
                         "UART_SERIAL_WRITE_CHARACTERISTIC");
             _state = ConnectionManager.STATE_DISCONNECTED;
+            WatchUi.requestUpdate();
             return;
         }
         characteristic.requestWrite(
@@ -414,6 +430,7 @@ class ConnectionManager {
 
         // Step 7
         _state = ConnectionManager.STATE_SETUP_KEEP_ALIVE;
+        WatchUi.requestUpdate();
         disableNotification(_profileManager.UART_SERIAL_READ_CHARACTERISTIC);
     }
 
