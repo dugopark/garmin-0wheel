@@ -8,9 +8,15 @@ class ViewController {
         _modelFactory = modelFactory;
     }
 
-    function getInitialView() {
+    function getInitialView(connectionManager) {
+        return [new ConnectionView(connectionManager, self),
+                new ConnectionDelegate(connectionManager)];
+    }
+
+    function pushOnewheelView() {
         var owDataModel = _modelFactory.getOWDataModel();
-        return [new DeviceView(owDataModel),
-                new DeviceDelegate(owDataModel)];
+        WatchUi.pushView(new DeviceView(owDataModel),
+                         new DeviceDelegate(owDataModel),
+                         WatchUi.SLIDE_UP);
     }
 }
