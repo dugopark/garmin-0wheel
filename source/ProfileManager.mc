@@ -81,7 +81,24 @@ class ProfileManager {
     };
 
     function registerProfiles() {
-        var ret = Ble.registerProfile(_onewheelProfileDef);
+        var i = 0;
+        while (i < 3) {
+            var exceptionOccurred = false;
+            try {
+                // Sometimes max number of profiles are registered, so retry a
+                // few times if an exception is thrown.
+                Ble.registerProfile(_onewheelProfileDef);
+            } catch (ex) {
+                // Monkey C doesn't let you call continue within a catch block,
+                // hence this crappy workaround.
+                exceptionOccurred = true;
+            }
+            if (!exceptionOccurred) {
+                Utils.log("No exception occurred. done");
+                break;
+            }
+            i += 1;
+        }
     }
 
     function getMonitoredCharacteristicUuids() {

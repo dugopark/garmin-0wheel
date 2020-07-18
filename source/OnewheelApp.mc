@@ -17,12 +17,7 @@ class OnewheelApp extends Application.AppBase {
     // onStart() is called on application start up
     function onStart(state) {
         Utils.log("----- onStart ------");
-        try {
-            _profileManager = new ProfileManager();
-        } catch (e) {
-            Utils.log("exception: " + e.getErrorMessage());
-            Sys.exit();
-        }
+        _profileManager = new ProfileManager();
         _bleDelegate = new OWDelegate();
         _connectionManager = new ConnectionManager(_bleDelegate,
                                                    _profileManager);
